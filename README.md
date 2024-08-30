@@ -1,0 +1,1 @@
+This is a soccer data analytics project for the Copa America 2023-24. The project is completed in R. I will update the Readme as I complete this project
