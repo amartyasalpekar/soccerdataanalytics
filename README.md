@@ -35,7 +35,7 @@ The analysis is based on data obtained from the StatsBomb API using the `StatsBo
 3. **Run the Shiny App:**
     You can run the Shiny app locally by opening `app.R` or using the command:
     ```r
-    shiny::runApp("ShinyVanilla.R")
+    shiny::runApp("app.R")
     ```
 
 ## Usage
@@ -57,7 +57,7 @@ The analysis is based on data obtained from the StatsBomb API using the `StatsBo
 
 ## File Structure
 
-- `ShinyVanilla.R`: Main file to run the Shiny application.
+- `app.R`: Main file to run the Shiny application.
 - `README.md`: This file, providing an overview and instructions for the project.
 
 ## Acknowledgements
