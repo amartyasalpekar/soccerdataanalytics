@@ -7,6 +7,7 @@ library(plotly)
 library(SBpitch)
 library(ggthemes)
 library(ggrepel)
+library(ggsoccer)
 
 Comp <- FreeCompetitions() %>% filter(competition_id==223 & season_id==282) #2 
 
@@ -19,53 +20,104 @@ shots_goal = StatsBombData %>% group_by(team.name) %>%
   summarise(shots = sum(type.name == "Shot", na.rm = T), goals = sum(shot.outcome.name == "Goal", na.rm = T))
 
 
+# Danger Passes: Passes that were played in the 15 second window before the shot was attempted.
+# I am calculating the danger passes played by Copa America Winners - Argentina and heat map to understand which third of the field were Argentina most dangerous in.
 
-# # Danger Passes: Passes that were played in the 15 second window before the shot was attempted.
-# # I am calculating the danger passes played by Copa America Winners - Argentina and heat map to understand which third of the field were Argentina most dangerous in. 
-# 
 # argentina_events <- StatsBombData%>%filter(team.name == "Argentina")
 # 
 # danger_passes <- data.frame()
 # 
 # # Iterate over each period
 # for (period in 1:2) {
-#   
+# 
 #   # Filter the passes and shots for the current period
 #   passes <- argentina_events %>%
 #     filter(type.name == "Pass", is.na(pass.outcome.name), period == period) %>%
 #     select(x = location.x, y = location.y, end_x = pass.end_location.x, end_y = pass.end_location.y, minute, second, player.name) %>%
 #     mutate(pass_time_seconds = minute * 60 + second)
-#   
+# 
 #   shots <- argentina_events %>%
 #     filter(type.name == "Shot", period == period) %>%
 #     select(minute, second) %>%
 #     mutate(shot_time_seconds = minute * 60 + second)
-#   
+# 
 #   shot_window <- 15
-#   
+# 
 #   # Adjust the shot start time for edge cases
 #   shots <- shots %>%
 #     mutate(shot_start = pmax(shot_time_seconds - shot_window, ifelse(period == 1, 0, 2700))) # 2700 seconds is the start of the second half (45 * 60)
-#   
+# 
 #   # Identify danger passes
 #   pass_to_shot <- sapply(passes$pass_time_seconds, function(pass_time) {
 #     any(sapply(seq_len(nrow(shots)), function(i) {
 #       pass_time > shots$shot_start[i] && pass_time < shots$shot_time_seconds[i]
 #     }))
 #   })
-#   
+# 
 #   danger_passes_period <- passes[pass_to_shot, ]
-#   
+# 
 #   # Combine the results
 #   danger_passes <- bind_rows(danger_passes, danger_passes_period)
 # }
 
-## James Rodirguez passes and assists - Golden Ball. 
+##RADAR PLOT
 
-james_pass <- StatsBombData%>%filter(type.name == "Pass" & is.na(pass.outcome.name), player.id == 5695)
+#minutes played
 
-## Key Passes vs Assists per 90 minutes 
 
+player_minutes = get.minutesplayed(StatsBombData) 
+player_minutes = player_minutes %>% group_by(player.id) %>% 
+  summarise(minutes = sum(MinutesPlayed)) #3
+
+player_minutes <- player_minutes%>%filter(minutes>180)
+
+xg_by_player <- StatsBombData %>%
+  filter(type.name == "Shot") %>%
+  group_by(player.name, player.id) %>%
+  summarise(total_xg = sum(shot.statsbomb_xg, na.rm = TRUE)) %>%
+  arrange(desc(total_xg))
+
+#passes_final_third_count -> already available
+passes_final_third <- StatsBombData%>%filter(type.name == "Pass", pass.end_location.x > 80)%>%
+  filter(!pass.outcome.name %in% c("Injury Clearance", "Unknown"))
+
+
+passes_final_third <- passes_final_third %>%
+  mutate(pass_success = ifelse(is.na(pass.outcome.name), "Successful", "Unsuccessful"))
+
+passes_final_third_count <- passes_final_third %>%
+  group_by(player.id, player.name) %>%
+  summarise(
+    total_passes = n(),
+    successful_passes = sum(pass_success == "Successful"),
+    unsuccessful_passes = sum(pass_success == "Unsuccessful")
+  ) %>%
+  ungroup()
+
+
+passes_final_third_count <- passes_final_third_count %>%
+  mutate(is_james = ifelse(player.name == "James David Rodríguez Rubio", TRUE, FALSE))
+
+
+aerial_duels <- StatsBombData %>%
+  filter(clearance.aerial_won == TRUE | shot.aerial_won == TRUE) %>%
+  group_by(player.name, player.id) %>%
+  summarise(total_aerial_duels_won = n()) %>%
+  arrange(desc(total_aerial_duels_won))
+
+ground_duels_won <- StatsBombData %>%
+  filter(duel.outcome.name %in% c("Won", "Success", "Success in Play")) %>%
+  group_by(player.id, player.name, team.name) %>%
+  summarise(total_ground_duels_won = n(), .groups = 'drop') %>%
+  arrange(desc(total_ground_duels_won))
+
+goals_by_player <- StatsBombData %>%
+  filter(shot.outcome.name == "Goal") %>%
+  group_by(player.id, player.name, team.name) %>%
+  summarise(total_goals = n(), .groups = 'drop') %>%
+  arrange(desc(total_goals)) 
+
+##key_passes and assists available
 key_passes <- StatsBombData %>%
   filter(!is.na(pass.assisted_shot_id)) %>%
   group_by(player.id, player.name, team.name) %>%
@@ -75,6 +127,174 @@ assists <- StatsBombData %>%
   filter(pass.goal_assist == TRUE) %>%
   group_by(player.id, player.name, team.name) %>%
   summarise(assists = n())
+
+## successful dribbles
+dribbles <- StatsBombData %>%
+  filter(dribble.outcome.name == "Complete") %>%
+  group_by(player.id, player.name, team.name) %>%
+  summarise(dribbles = n())
+
+
+final_stats <- player_minutes %>%
+  # Join with xg_by_player to get player.name
+  left_join(xg_by_player %>% select(player.id, player.name), by = "player.id") %>%
+  left_join(xg_by_player, by = c("player.id", "player.name")) %>%
+  left_join(aerial_duels, by = c("player.id", "player.name")) %>%
+  left_join(ground_duels_won, by = c("player.id", "player.name")) %>%
+  left_join(goals_by_player, by = c("player.id", "player.name")) %>%
+  left_join(passes_final_third_count, by = c("player.id", "player.name")) %>%
+  left_join(key_passes, by = c("player.id", "player.name")) %>%
+  left_join(assists, by = c("player.id", "player.name")) %>%
+  left_join(dribbles, by = c("player.id", "player.name")) %>%
+  # Replace NA values with 0 for numerical columns
+  replace_na(list(
+    total_xg = 0,
+    total_aerial_duels_won = 0,
+    total_ground_duels_won = 0,
+    total_goals = 0,
+    key_passes = 0,
+    assists = 0,
+    dribbles = 0
+  ))
+
+final_stats <- final_stats %>%
+  select(-team.name.x, -team.name.y, -team.name.x.x, -team.name.x.x, -team.name.y.y, -successful_passes, -unsuccessful_passes)
+
+final_stats_per90 <- final_stats %>%
+  # Ensure minutes is not zero to avoid division by zero
+  mutate(minutes = if_else(minutes == 0, 1, minutes)) %>%
+  mutate(
+    xg_per90 = (total_xg / minutes) * 90,
+    aerial_duels_per90 = (total_aerial_duels_won / minutes) * 90,
+    ground_duels_per90 = (total_ground_duels_won / minutes) * 90,
+    goals_per90 = (total_goals / minutes) * 90,
+    key_passes_per90 = (key_passes / minutes) * 90,
+    assists_per90 = (assists / minutes) * 90,
+    dribbles_per90 = (dribbles/minutes) * 90
+  )%>%
+  select(
+    player.id, player.name, minutes,
+    xg_per90, aerial_duels_per90, ground_duels_per90, goals_per90, key_passes_per90, assists_per90, dribbles_per90
+  )
+
+player_names <- StatsBombData %>%
+  select(player.id, player.name) %>%
+  distinct(player.id, .keep_all = TRUE)
+
+
+player_positions <- StatsBombData %>%
+  select(player.id, player.name, position.id) %>%
+  distinct()
+
+attackers_ids <- c(17, 21, 22, 23, 24, 25)
+midfielders_ids <- c(9, 10, 11, 12, 13, 14, 15, 16, 18)
+defenders_ids <- c(2, 3, 4, 5, 6, 7, 8)
+
+final_stats_with_positions <- final_stats_per90 %>%
+  left_join(player_positions, by = "player.id")
+
+attackers <- final_stats_with_positions %>%
+  filter(position.id %in% attackers_ids) %>%
+  distinct(player.id, .keep_all = TRUE)
+
+midfielders <- final_stats_with_positions %>%
+  filter(position.id %in% midfielders_ids) %>%
+  distinct(player.id, .keep_all = TRUE)
+
+defenders <- final_stats_with_positions %>%
+  filter(position.id %in% defenders_ids) %>%
+  distinct(player.id, .keep_all = TRUE)
+
+attackers_percentiles <- attackers %>%
+  mutate(
+    xg_percentile = percent_rank(xg_per90),
+    aerial_duels_percentile = percent_rank(aerial_duels_per90),
+    ground_duels_percentile = percent_rank(ground_duels_per90),
+    goals_percentile = percent_rank(goals_per90),
+    key_passes_percentile = percent_rank(key_passes_per90),
+    assists_percentile = percent_rank(assists_per90),
+    dribbles_percentile = percent_rank(dribbles_per90)
+  )
+
+midfielders_percentiles <- midfielders %>%
+  mutate(
+    xg_percentile = percent_rank(xg_per90),
+    aerial_duels_percentile = percent_rank(aerial_duels_per90),
+    ground_duels_percentile = percent_rank(ground_duels_per90),
+    goals_percentile = percent_rank(goals_per90),
+    key_passes_percentile = percent_rank(key_passes_per90),
+    assists_percentile = percent_rank(assists_per90), 
+    dribbles_percentile = percent_rank(dribbles_per90)
+  )
+
+defenders_percentiles <- defenders %>%
+  mutate(
+    xg_percentile = percent_rank(xg_per90),
+    aerial_duels_percentile = percent_rank(aerial_duels_per90),
+    ground_duels_percentile = percent_rank(ground_duels_per90),
+    goals_percentile = percent_rank(goals_per90),
+    key_passes_percentile = percent_rank(key_passes_per90),
+    assists_percentile = percent_rank(assists_per90),
+    dribbles_percentile = percent_rank(dribbles_per90)
+  )
+
+attackers_radar_data <- attackers_percentiles %>%
+  rename(player.name = player.name.x) %>%
+  select(player.name, xg_percentile, aerial_duels_percentile, ground_duels_percentile, 
+         goals_percentile, key_passes_percentile, assists_percentile, dribbles_percentile)
+
+midfielders_radar_data <- midfielders_percentiles %>%
+  rename(player.name = player.name.x) %>%
+  select(player.name, xg_percentile, aerial_duels_percentile, ground_duels_percentile, 
+         goals_percentile, key_passes_percentile, assists_percentile, dribbles_percentile)
+
+defenders_radar_data <- defenders_percentiles %>%
+  rename(player.name = player.name.x) %>%
+  select(player.name, xg_percentile, aerial_duels_percentile, ground_duels_percentile, 
+         goals_percentile, key_passes_percentile, assists_percentile, dribbles_percentile)
+
+create_radar_plot <- function(data, selected_players) {
+  # Filter the data for the selected players
+  player_data <- data %>% filter(player.name %in% selected_players)
+  
+  # Initialize the plot
+  radar_plot <- plot_ly(type = 'scatterpolar', fill = 'toself')
+  
+  # Add each player's data to the plot
+  for (i in 1:nrow(player_data)) {
+    radar_plot <- radar_plot %>%
+      add_trace(
+        r = as.numeric(player_data[i, -1]),  # The player's stats
+        theta = colnames(data)[-1],  # The stat names
+        name = player_data$player.name[i]
+      )
+  }
+  
+  # Set layout options
+  radar_plot <- radar_plot %>%
+    layout(
+      polar = list(
+        radialaxis = list(
+          visible = TRUE,
+          range = c(0, 1)  # Percentiles are between 0 and 1
+        )
+      ),
+      title = "Radar Plot for Selected Players"
+    )
+  
+  return(radar_plot)
+}
+
+
+
+## James Rodirguez passes and assists - Golden Ball. 
+
+james_pass <- StatsBombData%>%filter(type.name == "Pass" & is.na(pass.outcome.name), player.id == 5695)
+
+## Key Passes vs Assists per 90 minutes 
+
+
+minutes_data = get.minutesplayed(StatsBombData)
 
 player_minutes <- minutes_data %>% group_by(player.id) %>% summarise(minutes = sum(MinutesPlayed))
 
@@ -87,27 +307,8 @@ player_stats <- player_stats%>%mutate(assists_per90 = assists/nineties, key_pass
 player_stats <- player_stats%>%filter(minutes >= 180)
 ##Final Third Passes 
 
-passes_final_third <- StatsBombData%>%filter(type.name == "Pass", pass.end_location.x > 80)%>%
-  filter(!pass.outcome.name %in% c("Injury Clearance", "Unknown"))
+top_passes_final_third_count <- passes_final_third_count%>%filter(total_passes > 83)
 
-
-passes_final_third <- passes_final_third %>%
-  mutate(pass_success = ifelse(is.na(pass.outcome.name), "Successful", "Unsuccessful"))
-
-passes_final_third_count <- passes_final_third %>%
-  group_by(player.name) %>%
-  summarise(
-    total_passes = n(),
-    successful_passes = sum(pass_success == "Successful"),
-    unsuccessful_passes = sum(pass_success == "Unsuccessful")
-  ) %>%
-  ungroup()
-
-passes_final_third_count <- passes_final_third_count%>%filter(total_passes > 83)
-
-
-passes_final_third_count <- passes_final_third_count %>%
-  mutate(is_james = ifelse(player.name == "James David Rodríguez Rubio", TRUE, FALSE))
 
 ### Lautaro Martinez - Golden Boot 
 
@@ -127,7 +328,8 @@ ui <- navbarPage(
              ),
              
              mainPanel(
-               plotlyOutput("shotsGoalsPlot")
+               plotlyOutput("shotsGoalsPlot"),
+               plotlyOutput("ShotsGoalsper90")
              )
            )
   ),
@@ -139,10 +341,56 @@ ui <- navbarPage(
              plotOutput("keyPassesAssistsPlot"),
              plotOutput("lautaroShotMapPlot")
            )
+  ),
+  tabPanel("Scouting Reports",
+           fluidRow(
+             column(
+               width = 12,
+               selectInput("selected_players", "Select Attackers:", 
+                           choices = unique(attackers_radar_data$player.name),
+                           selected = unique(attackers_radar_data$player.name)[1],  # Default selection
+                           multiple = TRUE)  # Allow multiple selections
+             )
+           ),
+           fluidRow(
+             column(
+               width = 12,
+               plotlyOutput("radarPlotAttackers")
+             )
+           ),
+           fluidRow(
+             column(
+               width = 12,
+               selectInput("selected_midfielders", "Select Midfielders:", 
+                           choices = unique(midfielders_radar_data$player.name),
+                           selected = unique(midfielders_radar_data$player.name)[1],  # Default selection
+                           multiple = TRUE)  # Allow multiple selections
+             )
+           ),
+           fluidRow(
+             column(
+               width = 12,
+               plotlyOutput("radarPlotMidfielders")
+             )
+           ),
+           fluidRow(
+             column(
+               width = 12,
+               selectInput("selected_defenders", "Select Defenders:", 
+                           choices = unique(defenders_radar_data$player.name),
+                           selected = unique(defenders_radar_data$player.name)[1],  # Default selection
+                           multiple = TRUE)  # Allow multiple selections
+             )
+           ),
+           fluidRow(
+             column(
+               width = 12,
+               plotlyOutput("radarPlotDefenders")
+             )
+           )
   )
+  
 )
-
-
 
 server <- function(input, output, session) {
   # Reactive expression to filter data based on selected teams
@@ -168,10 +416,10 @@ server <- function(input, output, session) {
     
     ggplotly(p, tooltip = "text")
   })
-  
+
+    
   # Render the James Rodriguez plot
   output$jamesPassesPlot <- renderPlot({
-    
     create_Pitch() + 
       geom_segment(data = james_pass, aes(x = location.x, y = location.y,
                                           xend = pass.end_location.x, yend = pass.end_location.y,
@@ -196,7 +444,7 @@ server <- function(input, output, session) {
   })
   
   output$finalThirdPassesPlot <- renderPlot({
-    ggplot(passes_final_third_count, aes(x = reorder(player.name, -total_passes))) +
+    ggplot(top_passes_final_third_count, aes(x = reorder(player.name, -total_passes))) +
       geom_bar(aes(y = successful_passes, fill = "Successful Passes"), stat = "identity", position = "dodge", color = "black") +
       geom_bar(aes(y = unsuccessful_passes, fill = "Unsuccessful Passes"), stat = "identity", position = "dodge", color = "black") +
       scale_fill_manual(values = c("Successful Passes" = "green", "Unsuccessful Passes" = "red")) +
@@ -250,9 +498,9 @@ server <- function(input, output, session) {
                                     "Paraguay" = "#56B4E9", "Peru" = "#F0E442", 
                                     "United States" = "#D55E00", "Uruguay" = "#009E73", 
                                     "Venezuela" = "#CC79A7", "Canada" = "#0072B2")) + 
-      scale_fill_manual(values = c("Argentina" = "#0072B2", "Bolivia" = "#F0E442", 
+      scale_fill_manual(values = c("Argentina" = "#56B2B9", "Bolivia" = "#F0E442", 
                                    "Brazil" = "#009E73", "Chile" = "#D55E00", 
-                                   "Colombia" = "#E69F00", "Costa Rica" = "#56B4E9", 
+                                   "Colombia" = "#FDF100", "Costa Rica" = "#56B4E9", 
                                    "Ecuador" = "#CC79A7", "Jamaica" = "#000000", 
                                    "Mexico" = "#E69F00", "Panama" = "#0072B2", 
                                    "Paraguay" = "#56B4E9", "Peru" = "#F0E442", 
@@ -272,6 +520,18 @@ server <- function(input, output, session) {
       theme(panel.grid.major = element_line(color = "grey90"),
             panel.grid.minor = element_line(color = "grey95"),
             panel.background = element_rect(fill = "white", color = NA))
+  })
+  
+  output$radarPlotAttackers <- renderPlotly({
+    create_radar_plot(attackers_radar_data, input$selected_players)
+  })
+  
+  output$radarPlotMidfielders <- renderPlotly({
+    create_radar_plot(midfielders_radar_data, input$selected_midfielders)
+  })
+  
+  output$radarPlotDefenders <- renderPlotly({
+    create_radar_plot(defenders_radar_data, input$selected_defenders)
   })
   
 }
