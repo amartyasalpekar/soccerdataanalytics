@@ -60,13 +60,6 @@ The analysis is based on data obtained from the StatsBomb API using the `StatsBo
 - `ShinyVanilla.R`: Main file to run the Shiny application.
 - `README.md`: This file, providing an overview and instructions for the project.
 
-## Contributing
-
-Contributions are welcome! If you have suggestions for improvements or new features, feel free to create an issue or submit a pull request.
-
-## License
-
-
 ## Acknowledgements
 
 - **StatsBomb**: Special thanks to StatsBomb for providing open access to their detailed football event data.
