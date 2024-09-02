@@ -309,7 +309,6 @@ player_stats <- player_stats%>%filter(minutes >= 180)
 
 top_passes_final_third_count <- passes_final_third_count%>%filter(total_passes > 83)
 
-touch_colors <- c("Shot" = "red", "Ball Receipt*" = "blue", "Pass" = "green", "Carry" = "purple")
 
 # Create the pitch and plot Lautaro's touches, colored by type
 
@@ -319,8 +318,10 @@ touch_colors <- c("Shot" = "red", "Ball Receipt*" = "blue", "Pass" = "green", "C
 
 lautaro_shots = StatsBombData%>%filter(type.name == "Shot", player.id ==11456)
 
-lautaro_touches = StatsBombData%>%filter(player.id ==11456, type.name %in% c("Ball Receipt*", "Pass", "Shot", "Carry"))%>%
+lautaro_touches = StatsBombData%>%filter(player.id ==11456, type.name %in% c("Ball Receipt*", "Pass", "Shot", "Carry", "Dribble", "Foul Won", "Miscontrol", "Ball Recovery"))%>%
   filter(location.x >= 102 & location.x <= 120 & location.y>=18 & location.y<=62)
+
+touch_colors <- c("Shot" = "red", "Ball Receipt*" = "blue", "Pass" = "green", "Carry" = "purple", "Dribble" = "yellow", "Foul Won" = "brown", "Miscontrol" = "black", "Ball Recovery" = "pink")
 
 ### Defensive Pressures Regions
 
@@ -586,7 +587,7 @@ server <- function(input, output, session) {
       labs(title = "Lautaro Martínez's Touches in Opponent's Box", 
            subtitle = "Copa America 2023-24") + 
       scale_y_reverse() +  # Reverse Y axis to match pitch orientation
-      coord_fixed(ratio = 105/68) +  # Maintain the correct pitch dimensions
+      coord_fixed(ratio = 105/100) +  # Maintain the correct pitch dimensions
       theme_minimal() +  # Apply a minimal theme for a clean look
       theme(
         panel.grid = element_blank(),  # Remove grid lines
