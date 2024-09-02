@@ -35,7 +35,7 @@ The analysis is based on data obtained from the StatsBomb API using the `StatsBo
 3. **Run the Shiny App:**
     You can run the Shiny app locally by opening `app.R` or using the command:
     ```r
-    shiny::runApp("app.R")
+    shiny::runApp("shinyApp.R")
     ```
 
 ## Usage
